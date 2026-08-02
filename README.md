@@ -66,10 +66,14 @@ than assuming the default.
 
 | | |
 |---|---|
-| [docs/AUDIT.md](docs/AUDIT.md) | Every check, why it is on the list, and the two rules the checks follow |
 | [docs/FINDINGS.md](docs/FINDINGS.md) | What the review actually found — cause, fix, and what now makes it visible |
+| [docs/HARDENING.md](docs/HARDENING.md) | The controls applied across the repositories, and how each was verified |
+| [docs/PIPELINE.md](docs/PIPELINE.md) | Every workflow and script — what it does, when it runs, and why it earns its place |
+| [docs/AUDIT.md](docs/AUDIT.md) | Every check, why it is on the list, and the rules the checks follow |
 | [docs/WEEKLY.md](docs/WEEKLY.md) | Running it on a schedule, and the one token it needs |
-| [docs/HARDENING.md](docs/HARDENING.md) | The controls applied across the four repositories, and what each is for |
+
+[docs/README.md](docs/README.md) indexes these and states the three ideas they
+all reduce to.
 
 [FINDINGS.md](docs/FINDINGS.md) is the one worth reading if you only read one.
 It includes the two findings that were **wrong** — a workflow reported as using
