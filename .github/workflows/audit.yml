@@ -77,7 +77,11 @@ jobs:
           GH_TOKEN: ${{ secrets.AUDIT_TOKEN }}
         run: |
           set -o pipefail
-          ./scripts/audit.sh 2>&1 | tee audit-result.txt
+          # Invoked through bash rather than executed directly: the mode bit
+          # does not survive a checkout on every platform, and a missing +x
+          # fails with exit 126 — which reads as an audit failure rather than
+          # as the script never having run.
+          bash ./scripts/audit.sh 2>&1 | tee audit-result.txt
           echo "AUDIT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
 
       - name: Summarise

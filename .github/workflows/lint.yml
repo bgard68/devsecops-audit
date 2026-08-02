@@ -39,6 +39,24 @@ jobs:
           done
 
       # Pre-installed on the runner, so no action and no extra supply chain.
+      # A script committed without its mode bit fails at run time with exit
+      # 126, which looks like the script ran and failed rather than never
+      # having run at all. Caught here instead.
+      - name: Every script is executable
+        run: |
+          set -euo pipefail
+          bad=0
+          for f in scripts/*.sh; do
+            mode=$(git ls-files -s "$f" | awk '{print $1}')
+            if [ "$mode" != "100755" ]; then
+              echo "::error title=Not executable::$f is committed as $mode; needs 100755 (git update-index --chmod=+x $f)"
+              bad=1
+            else
+              echo "ok  $f is executable"
+            fi
+          done
+          exit $bad
+
       - name: shellcheck
         run: |
           set -euo pipefail
