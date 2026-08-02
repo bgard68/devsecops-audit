@@ -39,8 +39,12 @@
 # Owner and targets are overridable so this is not welded to one account.
 #   OWNER=someone REPOS="a b" BRANCHES="a:main b:main b:dev" ./scripts/audit.sh
 OWNER="${OWNER:-bgard68}"
-REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku}"
-BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main}"
+# devsecops-audit audits itself. A tool that exempts itself from its own checks
+# is the failure this exists to prevent, in miniature: the checklist was written
+# because "is it secure?" kept being answered from memory, and a list with a
+# hole in it where the auditor sits is the same gap wearing a different hat.
+REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku devsecops-audit}"
+BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main devsecops-audit:main}"
 case "${1:-}" in
   -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac

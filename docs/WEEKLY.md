@@ -25,7 +25,9 @@ never the value.
 
 1. **[Create a fine-grained personal access token](https://github.com/settings/personal-access-tokens/new)**
 2. **Repository access** → *Only select repositories* → pick exactly the ones
-   listed in `scripts/audit.sh`, and nothing else
+   listed in `scripts/audit.sh`, and nothing else. That includes this
+   repository, which audits itself. The picker is multi-select even though the
+   dropdown closes after each choice — reopen it and add the next.
 3. **Repository permissions**, all read-only:
 
    | Permission | Access | Needed for |

@@ -56,8 +56,9 @@ Configuration is a statement of intent. Only the attempt is evidence.
 | [ToDoApp](https://github.com/bgard68/ToDoApp) | .NET 10 API and React frontend — JWT auth, refresh-token revocation, Google sign-in |
 | [LotteryApp](https://github.com/bgard68/LotteryApp) | .NET API with an Angular frontend |
 | [Net10Sudoku](https://github.com/bgard68/Net10Sudoku) | Blazor Interactive Server sudoku generator and solver |
+| **this repository** | audits itself, on the same checklist |
 
-Seven deploying branches between them. Several of these projects deploy from
+Eight deploying branches between them. Several of these projects deploy from
 more than one branch, which is why the audit takes `repo:branch` pairs rather
 than assuming the default.
 
