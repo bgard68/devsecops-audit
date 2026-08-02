@@ -59,9 +59,19 @@ rt()  { b=$(echo "$1"|cut -d/ -f1,2); s=$(echo "$1"|cut -d/ -f3-); p="action.yml
 
 echo "=== repo-level ==="
 for r in $REPOS; do
-  [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning.status' 2>/dev/null)" = "enabled" ] || note "$r secret scanning off"
-  [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning_push_protection.status' 2>/dev/null)" = "enabled" ] || note "$r push protection off"
-  [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.dependabot_security_updates.status' 2>/dev/null)" = "enabled" ] || note "$r dependabot off"
+  # security_and_analysis is only returned to a token with admin rights on the
+  # repository. A token without them gets the field omitted entirely, which is
+  # indistinguishable from "disabled" unless you look — and reporting a control
+  # as off because the question could not be asked is the same failure as the
+  # missing-jq run that produced twelve false failures.
+  sa=$(gh api repos/${OWNER}/$r --jq '.security_and_analysis // "MISSING"' 2>/dev/null)
+  if [ "$sa" = "MISSING" ] || [ -z "$sa" ]; then
+    note "$r cannot read security settings - the token needs Administration: Read on this repository"
+  else
+    [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning.status' 2>/dev/null)" = "enabled" ] || note "$r secret scanning off"
+    [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning_push_protection.status' 2>/dev/null)" = "enabled" ] || note "$r push protection off"
+    [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.dependabot_security_updates.status' 2>/dev/null)" = "enabled" ] || note "$r dependabot off"
+  fi
   [ "$(gh api repos/${OWNER}/$r/private-vulnerability-reporting --jq .enabled 2>/dev/null)" = "true" ] || note "$r private vuln reporting off"
   gh api repos/${OWNER}/$r/contents/SECURITY.md >/dev/null 2>&1 || note "$r no SECURITY.md"
   for kind in dependabot/alerts code-scanning/alerts secret-scanning/alerts; do

@@ -82,7 +82,12 @@ jobs:
           # fails with exit 126 — which reads as an audit failure rather than
           # as the script never having run.
           bash ./scripts/audit.sh 2>&1 | tee audit-result.txt
-          echo "AUDIT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          status=${PIPESTATUS[0]}
+          # The step must exit with the audit's status. Ending this block on a
+          # successful echo made the job report pass while the audit reported
+          # failures — a check that cannot fail, in the repository written to
+          # find exactly that.
+          exit "$status"
 
       - name: Summarise
         if: always()
