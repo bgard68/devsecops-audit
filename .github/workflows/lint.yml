@@ -69,8 +69,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
-          OWNER=bgard68 REPOS="this-repository-does-not-exist"             BRANCHES="this-repository-does-not-exist:main"             bash scripts/audit.sh > /dev/null 2>&1
-          status=$?
+          # `|| status=$?` rather than a bare call: GitHub runs this block with
+          # `bash -e`, so a non-zero exit aborts the step before it can be read
+          # — and a non-zero exit is exactly what this probe is here to observe.
+          # The first version of this probe was killed by the thing it tests.
+          status=0
+          OWNER=bgard68 REPOS="this-repository-does-not-exist"             BRANCHES="this-repository-does-not-exist:main"             bash scripts/audit.sh > /dev/null 2>&1 || status=$?
           if [ "$status" -eq 0 ]; then
             echo "::error title=Probe failed::The audit exited 0 against a target it cannot check. A failing audit must fail the job."
             exit 1
