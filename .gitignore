@@ -1,0 +1,42 @@
+# Nothing in this repository needs a credential, so anything matching these is
+# a mistake rather than a configuration choice. Listed explicitly instead of
+# relying on nobody making it.
+
+# Agent and editor state. .claude in particular has no business here — it can
+# carry local paths, port numbers and session detail that are nobody else's.
+.claude/
+.vscode/
+.idea/
+*.code-workspace
+
+# Anything that holds a value rather than a name
+.env
+.env.*
+*.local
+secrets.json
+*.pem
+*.key
+*.pfx
+*.p12
+*.pubxml
+*.publishsettings
+credentials
+credentials.*
+.netrc
+.npmrc
+
+# Cloud CLI state
+.azure/
+.aws/
+
+# Audit output. Runs are transient and may quote configuration from the repos
+# under audit; keep the script in git and the results out of it.
+audit-output/
+*.audit.log
+*.sarif
+
+# Usual noise
+*.log
+tmp/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,32 @@
+name: Dependency review
+
+# Refuses a pull request that ADDS a vulnerable dependency, before the merge
+# button is available rather than after the change has landed.
+#
+# There are no application dependencies here — it is a shell script. What it
+# does watch is the GitHub Actions this repository consumes, which is the
+# supply chain that actually matters for a workflow that holds a token.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Review the dependencies this pull request adds
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure

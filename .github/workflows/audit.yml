@@ -1,0 +1,127 @@
+name: Weekly audit
+
+# Runs the checklist against every repository listed in docs/WEEKLY.md and
+# opens an issue if anything fails.
+#
+# Weekly rather than on push, because what this watches drifts without anyone
+# touching it: an action publishes a new major, a runtime is deprecated, a
+# ruleset is edited in the UI, a secret is added and never wired up. None of
+# that produces a commit here, so nothing here would otherwise notice.
+
+on:
+  schedule:
+    # Monday morning. Early enough that a finding is waiting at the start of the
+    # week rather than arriving in the middle of it.
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+  # Also on any change to the script or its inputs, so a broken audit is caught
+  # by the audit rather than a week later.
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/audit.sh'
+      - '.github/workflows/audit.yml'
+  pull_request:
+    paths:
+      - 'scripts/audit.sh'
+      - '.github/workflows/audit.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit every repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Opening the issue below needs to write one; nothing else here does.
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Nothing here pushes, so the job token has no use after the clone.
+          persist-credentials: false
+
+      # The audit reads branch protection, rulesets, security settings and the
+      # secret list of OTHER repositories. GITHUB_TOKEN cannot: it is scoped to
+      # this repository alone. So a token with read access to the targets is
+      # required, and it is supplied by name from the encrypted secret store —
+      # never written into this repository.
+      #
+      # Absent, the job says so and stops rather than reporting a clean audit
+      # it did not perform. A check that cannot run must not look like a check
+      # that passed; that mistake has already been made once here, when a
+      # missing tool turned every question into a false failure.
+      - name: Confirm a token is available
+        id: token
+        env:
+          AUDIT_TOKEN: ${{ secrets.AUDIT_TOKEN }}
+        run: |
+          if [ -z "${AUDIT_TOKEN}" ]; then
+            echo "::error title=No audit token::AUDIT_TOKEN is not set, so the audit cannot read the target repositories. See docs/WEEKLY.md. Reporting this rather than a clean run."
+            exit 1
+          fi
+          echo "  token present"
+
+      - name: Run the audit
+        env:
+          GH_TOKEN: ${{ secrets.AUDIT_TOKEN }}
+        run: |
+          set -o pipefail
+          ./scripts/audit.sh 2>&1 | tee audit-result.txt
+          echo "AUDIT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Weekly audit"
+            echo
+            echo '```'
+            cat audit-result.txt 2>/dev/null || echo "(the audit produced no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A failing scheduled job is easy to miss — nobody is watching Actions on
+      # a Monday morning. An issue is not.
+      - name: Open an issue if anything failed
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            let body = 'The weekly audit failed. Output:\n\n';
+            try {
+              body += '```\n' + fs.readFileSync('audit-result.txt', 'utf8').slice(0, 60000) + '\n```';
+            } catch {
+              body += '_The audit produced no output — it likely could not start. Check the run log._';
+            }
+            body += `\n\n[Run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+
+            const title = 'Weekly audit failed';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'audit',
+            });
+            // Update the open one rather than opening a second: a failure that
+            // persists for a month should be one issue, not four.
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['audit'],
+              });
+            }

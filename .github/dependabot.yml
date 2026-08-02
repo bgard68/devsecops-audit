@@ -1,0 +1,18 @@
+version: 2
+
+updates:
+  # The only dependencies here are the actions the workflows consume — which is
+  # precisely the supply chain that matters for a job holding a token that can
+  # read four other repositories.
+  #
+  # Every action is pinned to a commit SHA, so these arrive as reviewable diffs
+  # rather than as tags moving underneath a running job. That is the point of
+  # pinning: not to freeze versions, but to make an upgrade something someone
+  # read.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(deps)"

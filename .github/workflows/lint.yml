@@ -1,0 +1,82 @@
+name: Lint
+
+# The audit script is the product here, so it gets the same treatment the
+# repositories it audits give their own code: a syntax check that fails the
+# build, and a linter that catches the shell mistakes which look fine until
+# a repository name contains a space.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell:
+    name: Shell syntax and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Parse every script
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh; do
+            bash -n "$f"
+            echo "ok  $f parses"
+          done
+
+      # Pre-installed on the runner, so no action and no extra supply chain.
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          # SC2086 is disabled deliberately: the repo and branch lists are
+          # space-separated words that are MEANT to split. Everything else
+          # is an error rather than a warning.
+          shellcheck --severity=warning --exclude=SC2086 scripts/*.sh
+          echo "ok  shellcheck clean"
+
+  workflows:
+    name: Workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Every workflow parses
+        run: |
+          set -euo pipefail
+          for f in .github/workflows/*.yml; do
+            python3 -c "import yaml,sys;yaml.safe_load(open(sys.argv[1],encoding='utf-8'))" "$f"
+            echo "ok  $f parses"
+          done
+
+      # This repository audits others for exactly this; failing to hold itself
+      # to it would be the most obvious possible omission.
+      - name: Every action is pinned to a commit SHA
+        run: |
+          set -uo pipefail
+          bad=$(grep -rhoE "uses: [^ ]+@[^ ]+" .github/workflows/*.yml | grep -vE "@[0-9a-f]{40}" || true)
+          if [ -n "$bad" ]; then
+            echo "::error title=Unpinned action::An action is pinned to a tag rather than a commit SHA."
+            echo "$bad"
+            exit 1
+          fi
+          echo "ok  every action pinned to a SHA"
