@@ -133,6 +133,20 @@ even for a public repository.
 Locally the script uses whatever `gh auth` already has. In CI it needs a token
 supplied explicitly; see [WEEKLY.md](WEEKLY.md).
 
+## The exit code
+
+`0` when clean, otherwise the number of failures, so it can gate a job.
+
+That was written in the script's header before it was true. For three commits
+the summary line was the last command, an echo always succeeds, and a failing
+audit exited 0 — so every job running it passed while it printed failures.
+
+It was found by reading the output rather than the status, which is luck. The
+lint workflow now proves it: the audit is shown a target it cannot possibly
+check and required to say so in its exit code. **A claim about behaviour that
+nothing verifies is exactly the fault this repository exists to find**, and it
+was sitting in the documentation of the tool that finds it.
+
 ## Adding a check
 
 Keep to the existing shape:

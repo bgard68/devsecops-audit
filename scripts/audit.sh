@@ -39,8 +39,12 @@
 # Owner and targets are overridable so this is not welded to one account.
 #   OWNER=someone REPOS="a b" BRANCHES="a:main b:main b:dev" ./scripts/audit.sh
 OWNER="${OWNER:-bgard68}"
-REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku}"
-BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main}"
+# devsecops-audit audits itself. A tool that exempts itself from its own checks
+# is the failure this exists to prevent, in miniature: the checklist was written
+# because "is it secure?" kept being answered from memory, and a list with a
+# hole in it where the auditor sits is the same gap wearing a different hat.
+REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku devsecops-audit}"
+BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main devsecops-audit:main}"
 case "${1:-}" in
   -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
@@ -55,9 +59,19 @@ rt()  { b=$(echo "$1"|cut -d/ -f1,2); s=$(echo "$1"|cut -d/ -f3-); p="action.yml
 
 echo "=== repo-level ==="
 for r in $REPOS; do
-  [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning.status' 2>/dev/null)" = "enabled" ] || note "$r secret scanning off"
-  [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning_push_protection.status' 2>/dev/null)" = "enabled" ] || note "$r push protection off"
-  [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.dependabot_security_updates.status' 2>/dev/null)" = "enabled" ] || note "$r dependabot off"
+  # security_and_analysis is only returned to a token with admin rights on the
+  # repository. A token without them gets the field omitted entirely, which is
+  # indistinguishable from "disabled" unless you look — and reporting a control
+  # as off because the question could not be asked is the same failure as the
+  # missing-jq run that produced twelve false failures.
+  sa=$(gh api repos/${OWNER}/$r --jq '.security_and_analysis // "MISSING"' 2>/dev/null)
+  if [ "$sa" = "MISSING" ] || [ -z "$sa" ]; then
+    note "$r cannot read security settings - the token needs Administration: Read on this repository"
+  else
+    [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning.status' 2>/dev/null)" = "enabled" ] || note "$r secret scanning off"
+    [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning_push_protection.status' 2>/dev/null)" = "enabled" ] || note "$r push protection off"
+    [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.dependabot_security_updates.status' 2>/dev/null)" = "enabled" ] || note "$r dependabot off"
+  fi
   [ "$(gh api repos/${OWNER}/$r/private-vulnerability-reporting --jq .enabled 2>/dev/null)" = "true" ] || note "$r private vuln reporting off"
   gh api repos/${OWNER}/$r/contents/SECURITY.md >/dev/null 2>&1 || note "$r no SECURITY.md"
   for kind in dependabot/alerts code-scanning/alerts secret-scanning/alerts; do
@@ -104,4 +118,19 @@ for r in $REPOS; do
 done
 
 echo
-[ "$fails" -eq 0 ] && echo "AUDIT CLEAN - $fails failures" || echo "AUDIT: $fails failure(s)"
+if [ "$fails" -eq 0 ]; then
+  echo "AUDIT CLEAN - $fails failures"
+else
+  echo "AUDIT: $fails failure(s)"
+fi
+
+# The header promises the exit code is the failure count, and for three
+# commits it was not: the summary line above was the last command, and an echo
+# always succeeds, so a failing audit exited 0 and every job using it passed.
+#
+# A claim about behaviour that nothing verifies is the fault this whole
+# repository was written to find. It was written into the script's own
+# documentation and went unchecked for exactly as long as it took someone to
+# read the output instead of the status. The lint job now proves this line
+# works by running the audit against a target that cannot pass.
+exit "$fails"

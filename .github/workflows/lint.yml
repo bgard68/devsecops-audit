@@ -39,6 +39,48 @@ jobs:
           done
 
       # Pre-installed on the runner, so no action and no extra supply chain.
+      # A script committed without its mode bit fails at run time with exit
+      # 126, which looks like the script ran and failed rather than never
+      # having run at all. Caught here instead.
+      - name: Every script is executable
+        run: |
+          set -euo pipefail
+          bad=0
+          for f in scripts/*.sh; do
+            mode=$(git ls-files -s "$f" | awk '{print $1}')
+            if [ "$mode" != "100755" ]; then
+              echo "::error title=Not executable::$f is committed as $mode; needs 100755 (git update-index --chmod=+x $f)"
+              bad=1
+            else
+              echo "ok  $f is executable"
+            fi
+          done
+          exit $bad
+
+      # The script's whole value is that a clean run means something, which
+      # requires a failing run to exit non-zero. It did not for three commits:
+      # the summary line was the last command, and an echo always succeeds, so
+      # a failing audit exited 0 and the job reported pass.
+      #
+      # Shown a target it cannot possibly pass, and required to say so in its
+      # exit code. This is the gate-probe pattern applied to the auditor.
+      - name: Probe - a failing audit exits non-zero
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          # `|| status=$?` rather than a bare call: GitHub runs this block with
+          # `bash -e`, so a non-zero exit aborts the step before it can be read
+          # — and a non-zero exit is exactly what this probe is here to observe.
+          # The first version of this probe was killed by the thing it tests.
+          status=0
+          OWNER=bgard68 REPOS="this-repository-does-not-exist"             BRANCHES="this-repository-does-not-exist:main"             bash scripts/audit.sh > /dev/null 2>&1 || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error title=Probe failed::The audit exited 0 against a target it cannot check. A failing audit must fail the job."
+            exit 1
+          fi
+          echo "ok  a failing audit exits $status - non-zero, as it must be"
+
       - name: shellcheck
         run: |
           set -euo pipefail
