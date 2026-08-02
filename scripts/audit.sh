@@ -118,4 +118,19 @@ for r in $REPOS; do
 done
 
 echo
-[ "$fails" -eq 0 ] && echo "AUDIT CLEAN - $fails failures" || echo "AUDIT: $fails failure(s)"
+if [ "$fails" -eq 0 ]; then
+  echo "AUDIT CLEAN - $fails failures"
+else
+  echo "AUDIT: $fails failure(s)"
+fi
+
+# The header promises the exit code is the failure count, and for three
+# commits it was not: the summary line above was the last command, and an echo
+# always succeeds, so a failing audit exited 0 and every job using it passed.
+#
+# A claim about behaviour that nothing verifies is the fault this whole
+# repository was written to find. It was written into the script's own
+# documentation and went unchecked for exactly as long as it took someone to
+# read the output instead of the status. The lint job now proves this line
+# works by running the audit against a target that cannot pass.
+exit "$fails"

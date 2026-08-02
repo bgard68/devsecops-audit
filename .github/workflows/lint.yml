@@ -57,6 +57,26 @@ jobs:
           done
           exit $bad
 
+      # The script's whole value is that a clean run means something, which
+      # requires a failing run to exit non-zero. It did not for three commits:
+      # the summary line was the last command, and an echo always succeeds, so
+      # a failing audit exited 0 and the job reported pass.
+      #
+      # Shown a target it cannot possibly pass, and required to say so in its
+      # exit code. This is the gate-probe pattern applied to the auditor.
+      - name: Probe - a failing audit exits non-zero
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          OWNER=bgard68 REPOS="this-repository-does-not-exist"             BRANCHES="this-repository-does-not-exist:main"             bash scripts/audit.sh > /dev/null 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error title=Probe failed::The audit exited 0 against a target it cannot check. A failing audit must fail the job."
+            exit 1
+          fi
+          echo "ok  a failing audit exits $status - non-zero, as it must be"
+
       - name: shellcheck
         run: |
           set -euo pipefail
