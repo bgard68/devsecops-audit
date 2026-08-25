@@ -44,7 +44,7 @@ OWNER="${OWNER:-bgard68}"
 # because "is it secure?" kept being answered from memory, and a list with a
 # hole in it where the auditor sits is the same gap wearing a different hat.
 REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku DevSecOpsSentinel WidgetWorks devsecops-audit}"
-BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main DevSecOpsSentinel:main WidgetWorks:main devsecops-audit:main}"
+BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main Net10Sudoku:main DevSecOpsSentinel:main WidgetWorks:main devsecops-audit:main}"
 case "${1:-}" in
   -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac

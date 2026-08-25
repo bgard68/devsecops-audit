@@ -60,7 +60,7 @@ Configuration is a statement of intent. Only the attempt is evidence.
 | [WidgetWorks](https://github.com/bgard68/WidgetWorks) | E-commerce store — rotating refresh tokens, TOTP 2FA, server-side re-priced checkout |
 | **this repository** | audits itself, on the same checklist |
 
-Ten deploying branches between them. Several of these projects deploy from
+Nine deploying branches between them. Several of these projects deploy from
 more than one branch, which is why the audit takes `repo:branch` pairs rather
 than assuming the default.
 
