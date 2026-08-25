@@ -43,8 +43,8 @@ OWNER="${OWNER:-bgard68}"
 # is the failure this exists to prevent, in miniature: the checklist was written
 # because "is it secure?" kept being answered from memory, and a list with a
 # hole in it where the auditor sits is the same gap wearing a different hat.
-REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku devsecops-audit}"
-BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main devsecops-audit:main}"
+REPOS="${REPOS:-ClaudeChessApp ToDoApp LotteryApp Net10Sudoku DevSecOpsSentinel WidgetWorks devsecops-audit}"
+BRANCHES="${BRANCHES:-ClaudeChessApp:main ToDoApp:main ToDoApp:dapper ToDoApp:frontend LotteryApp:main LotteryApp:frontend Net10Sudoku:main DevSecOpsSentinel:main WidgetWorks:main devsecops-audit:main}"
 case "${1:-}" in
   -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
@@ -52,10 +52,25 @@ esac
 fails=0
 note() { echo "  FAIL  $*"; fails=$((fails+1)); }
 
-wf()  { gh api "repos/${OWNER}/$1/contents/.github/workflows/$3?ref=$2" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null; }
-wfs() { gh api "repos/${OWNER}/$1/contents/.github/workflows?ref=$2" --jq '.[].name' 2>/dev/null; }
-rt()  { b=$(echo "$1"|cut -d/ -f1,2); s=$(echo "$1"|cut -d/ -f3-); p="action.yml"; [ -n "$s" ] && p="$s/action.yml"
-        gh api "repos/${OWNER}/$b/contents/$p?ref=$2" --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null | grep -oE "node[0-9]+" | head -1; }
+# gh prints the JSON error body to STDOUT on a non-2xx and exits non-zero, so
+# the exit status is the only thing separating an answer from an error wearing
+# an answer's clothes. Reading only the text turned one deleted branch into
+# eight findings: the missing ref returned
+#   {"message":"No commit found for the ref frontend",...,"status":"404"}
+# an unquoted expansion split it into seven words, and each word was audited as
+# though it were a workflow file - printing a fragment of the 404 where a file
+# name belongs.
+#
+# The same lesson as the missing-jq run that reported twelve controls disabled:
+# a check that could not run must never be reported as a check that ran.
+api() { api_out=$(gh api "$@" 2>/dev/null) || return 1; printf '%s\n' "$api_out"; }
+
+wf()  { api "repos/${OWNER}/$1/contents/.github/workflows/$3?ref=$2" --jq '.content' | tr -d '\n' | base64 -d 2>/dev/null; }
+wfs() { api "repos/${OWNER}/$1/contents/.github/workflows?ref=$2" --jq '.[].name'; }
+# Own names for the temporaries: rt is only ever called inside $( ), which is
+# what currently keeps b, s and p from leaking over the branch loop's own b.
+rt()  { rt_b=$(echo "$1"|cut -d/ -f1,2); rt_s=$(echo "$1"|cut -d/ -f3-); rt_p="action.yml"; [ -n "$rt_s" ] && rt_p="$rt_s/action.yml"
+        api "repos/${OWNER}/$rt_b/contents/$rt_p?ref=$2" --jq '.content' | tr -d '\n' | base64 -d 2>/dev/null | grep -oE "node[0-9]+" | head -1; }
 
 echo "=== repo-level ==="
 for r in $REPOS; do
@@ -84,6 +99,16 @@ done
 echo "=== branch-level ==="
 for e in $BRANCHES; do
   r=${e%%:*}; b=${e##*:}
+
+  # A branch that is not there cannot be audited, and must not be reported as
+  # though it were. Asked once, up front: every check below reads this ref, so
+  # without this its absence is rediscovered by each of them in turn and filed
+  # as a separate finding against a file that never existed.
+  if ! api "repos/${OWNER}/$r/branches/$b" --jq '.name' >/dev/null; then
+    note "$r/$b branch not found - restore it, or drop it from BRANCHES"
+    continue
+  fi
+
   c=$(gh api "repos/${OWNER}/$r/branches/$b/protection" --jq '[.required_status_checks.contexts[]?]|length' 2>/dev/null | grep -E '^[0-9]+$' || echo 0)
   k=$(gh api "repos/${OWNER}/$r/rules/branches/$b" --jq '[.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context]|length' 2>/dev/null | grep -E '^[0-9]+$' || echo 0)
   [ $((c+k)) -gt 0 ] || note "$r/$b no required status checks"
@@ -91,8 +116,20 @@ for e in $BRANCHES; do
   cls=$(gh api "repos/${OWNER}/$r/branches/$b/protection" --jq '"classic"' 2>/dev/null)
   echo "$types" | grep -q pull_request || [ -n "$cls" ] || note "$r/$b no PR requirement"
 
-  for f in $(wfs "$r" "$b"); do
+  if ! names=$(wfs "$r" "$b"); then
+    note "$r/$b cannot list workflows - the token needs Contents: Read on this repository"
+    continue
+  fi
+
+  # read -r over a here-string, not $(...): a file name is a line, and word
+  # splitting is what let a 404 body pose as seven of them.
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
     c2=$(wf "$r" "$b" "$f")
+    if [ -z "$c2" ]; then
+      note "$r/$b $f could not be read - reporting that rather than auditing an empty file"
+      continue
+    fi
     echo "$c2" | grep -qE "^permissions:|^\s+permissions:" || note "$r/$b $f no permissions block"
     echo "$c2" | grep -qE "^\s*pull_request_target:" && note "$r/$b $f uses pull_request_target"
     echo "$c2" | grep -qE '\$\{\{ *github\.event\.(issue|pull_request|comment|review|head_commit)' && note "$r/$b $f interpolates untrusted input"
@@ -102,7 +139,7 @@ for e in $BRANCHES; do
       echo "$ref" | grep -qE "@[0-9a-f]{40}" || { note "$r/$b $f unpinned: $ref"; continue; }
       [ "$(rt "$(echo $ref|cut -d@ -f1)" "$(echo $ref|cut -d@ -f2)")" = "node20" ] && note "$r/$b $f node20: $(echo $ref|cut -d@ -f1)"
     done
-  done
+  done <<< "$names"
 done
 
 echo "=== secrets ==="
@@ -111,7 +148,11 @@ for r in $REPOS; do
     hit=0
     for e in $BRANCHES; do
       [ "${e%%:*}" = "$r" ] || continue
-      for f in $(wfs "$r" "${e##*:}"); do wf "$r" "${e##*:}" "$f" | grep -q "$s" && hit=1; done
+      names=$(wfs "$r" "${e##*:}") || continue
+      while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        wf "$r" "${e##*:}" "$f" | grep -q "$s" && hit=1
+      done <<< "$names"
     done
     [ "$hit" -eq 0 ] && note "$r stale secret: $s"
   done
