@@ -67,6 +67,24 @@ api() { api_out=$(gh api "$@" 2>/dev/null) || return 1; printf '%s\n' "$api_out"
 
 wf()  { api "repos/${OWNER}/$1/contents/.github/workflows/$3?ref=$2" --jq '.content' | tr -d '\n' | base64 -d 2>/dev/null; }
 wfs() { api "repos/${OWNER}/$1/contents/.github/workflows?ref=$2" --jq '.[].name'; }
+# Emit only the lines inside run: block scalars. An interpolation is dangerous
+# because a shell executes it; the same expression in an env: or with: mapping
+# is the documented mitigation, where the value arrives as a quoted variable and
+# is never expanded into script text. Grepping the whole file reported both the
+# disease and the cure - it flagged DevSecOpsSentinel's ci.yml, which passes its
+# SHAs through env: and carries a comment above them saying why.
+#
+# Match structure, not text: the same rule the pull_request_target check was
+# rewritten under, after a comment that merely mentioned it produced a finding.
+runbody() {
+  awk '
+    /^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*[|>]/ { inrun=1; ind=match($0,/[^ ]/); next }
+    inrun {
+      if ($0 ~ /[^[:space:]]/ && match($0,/[^ ]/) <= ind) { inrun=0; next }
+      print
+    }
+  '
+}
 # Own names for the temporaries: rt is only ever called inside $( ), which is
 # what currently keeps b, s and p from leaking over the branch loop's own b.
 rt()  { rt_b=$(echo "$1"|cut -d/ -f1,2); rt_s=$(echo "$1"|cut -d/ -f3-); rt_p="action.yml"; [ -n "$rt_s" ] && rt_p="$rt_s/action.yml"
@@ -82,6 +100,12 @@ for r in $REPOS; do
   sa=$(gh api repos/${OWNER}/$r --jq '.security_and_analysis // "MISSING"' 2>/dev/null)
   if [ "$sa" = "MISSING" ] || [ -z "$sa" ]; then
     note "$r cannot read security settings - the token needs Administration: Read on this repository"
+    # Every check below reads through the same token, so without that access
+    # their answers are 404s - and a 404 is not a finding. It reported
+    # WidgetWorks' private vulnerability reporting as off and its
+    # dependency-review as missing, when neither question was ever answered.
+    # One honest line, naming the one thing to fix, beats three guesses.
+    continue
   else
     [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning.status' 2>/dev/null)" = "enabled" ] || note "$r secret scanning off"
     [ "$(gh api repos/${OWNER}/$r --jq '.security_and_analysis.secret_scanning_push_protection.status' 2>/dev/null)" = "enabled" ] || note "$r push protection off"
@@ -132,7 +156,7 @@ for e in $BRANCHES; do
     fi
     echo "$c2" | grep -qE "^permissions:|^\s+permissions:" || note "$r/$b $f no permissions block"
     echo "$c2" | grep -qE "^\s*pull_request_target:" && note "$r/$b $f uses pull_request_target"
-    echo "$c2" | grep -qE '\$\{\{ *github\.event\.(issue|pull_request|comment|review|head_commit)' && note "$r/$b $f interpolates untrusted input"
+    echo "$c2" | runbody | grep -qE '\$\{\{ *github\.event\.(issue|pull_request|comment|review|head_commit)' && note "$r/$b $f interpolates untrusted input"
     nco=$(echo "$c2" | grep -c "actions/checkout@"); npc=$(echo "$c2" | grep -c "persist-credentials")
     [ "$nco" -gt 0 ] && [ "$npc" -lt "$nco" ] && note "$r/$b $f checkout without persist-credentials"
     for ref in $(echo "$c2" | grep -ohE "uses: [a-zA-Z0-9._-]+/[a-zA-Z0-9._/-]+@[^ ]+" | sed 's/uses: //'); do
